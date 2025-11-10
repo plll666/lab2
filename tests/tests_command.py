@@ -1,6 +1,6 @@
 import tarfile
 import zipfile
-from pathlib import Path
+
 from src.logger import setup_logging, log_success, log_error, log_command, log_warning
 import pytest
 from src.errors import InvalidInputError
