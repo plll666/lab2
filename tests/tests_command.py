@@ -1,15 +1,15 @@
 import tarfile
 import zipfile
-
+from pathlib import Path
 from src.logger import setup_logging, log_success, log_error, log_command, log_warning
 import pytest
-
+from src.errors import InvalidInputError
 import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.commands import ls, cd, cat, cp, mv, rm, create_zip, extract_zip, create_tar, extract_tar
+from src.commands import ls, ls_l, cd, cat, cp, mv, rm, create_zip, extract_zip, create_tar, extract_tar
 
 
 
@@ -35,14 +35,25 @@ class TestCommands:
         with pytest.raises(FileNotFoundError):
             ls("nonexistent_directory")
 
+    def test_ls_not_directory(self, fs):
+        """Тест команды ls, когда путь не является директорией"""
+        fs.create_file("/file1.txt")
+        with pytest.raises(NotADirectoryError):
+            ls("/file1.txt")
+
     def test_ls_l(self, fs):
         """Тест команды ls с флагом -l"""
         fs.create_file("/file1.txt", contents="content1")
 
-        result = ls("/")
+        result = ls_l("/")
 
         assert len(result) > 0
         assert any("file1.txt" in line for line in result)
+
+    def test_ls_l_file_not_found(self, fs):
+        """Тест ls_l с несуществующей директорией"""
+        with pytest.raises(FileNotFoundError):
+            ls_l("/nonexistent",)
 
     def test_cd(self, fs):
         """Тест команды cd"""
@@ -67,13 +78,25 @@ class TestCommands:
         cd("..")
         assert os.getcwd() == start_dir
 
+    def test_cd_not_directory(self, fs):
+        """Тест cd с файлом вместо директории"""
+        fs.create_file("/file.txt")
+        with pytest.raises(NotADirectoryError):
+            cd("/file.txt")
+
     def test_cd_does_not_exist(self, fs):
         """Тест для не существующий директории"""
         with pytest.raises(FileNotFoundError):
             cd("nonexistent_directory")
 
+    def test_cd_current(self, fs):
+        """Тест cd с текущей директорией"""
+        start_dir = os.getcwd()
+        cd(".")
+        assert os.getcwd() == start_dir
+
     def test_cat(self, fs):
-        """Тест команды cd"""
+        """Тест команды cat"""
         content = "content"
         fs.create_file("/file1.txt", contents=content)
 
@@ -93,7 +116,7 @@ class TestCommands:
             cat("/test_dir")
 
     def test_cp_without_r(self, fs):
-        """тест команды cp бух фдага -r"""
+        """тест команды cp без флага -r"""
         fs.create_file("/file1.txt", contents="content1")
         fs.create_dir("test_dir")
 
@@ -125,6 +148,23 @@ class TestCommands:
         assert open("/test11_dir/file1.txt").read() == "content1"
         assert open("/test11_dir/subdir/file2.txt").read() == "content2"
 
+    def test_cp_file_not_found(self, fs):
+        """Тест cp с несуществующим файлом"""
+        with pytest.raises(FileNotFoundError):
+            cp("/nonexistent", "/target", [])
+
+    def test_cp_r_not_directory(self, fs):
+        """Тест cp -r с файлом вместо директории"""
+        fs.create_file("/file.txt")
+        with pytest.raises(NotADirectoryError):
+            cp("/file.txt", "/target", ["-r"])
+
+    def test_cp_directory_without_r(self, fs):
+        """Тест cp директории без флага -r"""
+        fs.create_dir("/dir")
+        with pytest.raises(IsADirectoryError):
+            cp("/dir", "/target", [])
+
     def test_mv(self, fs):
         """Тест команды mv"""
         fs.create_file("/file1.txt", contents="content1")
@@ -139,6 +179,14 @@ class TestCommands:
         assert open("/test_dir/file1.txt").read() == "content1"
         assert os.path.exists("/file3.txt")
         assert open("/file3.txt").read() == "ya_pishu_testi"
+
+    def test_mv_to_directory(self, fs):
+        """Тест mv в директорию"""
+        fs.create_file("/file.txt")
+        fs.create_dir("/target_dir")
+
+        mv("/file.txt", "/target_dir")
+        assert os.path.exists("/target_dir/file.txt")
 
     def test_mv_does_not_exist(self, fs):
         """Тест команды mv с несуществующим файлом"""
@@ -168,10 +216,27 @@ class TestCommands:
 
         assert not os.path.exists("/test_dir")
 
+    def test_rm_with_r_cancel(self, fs, monkeypatch):
+        """Тест rm -r с отменой"""
+        fs.create_dir("/test_dir")
+        monkeypatch.setattr("builtins.input", lambda x: "n")
+
+        rm("/test_dir", ["-r"])
+        assert os.path.exists("/test_dir")
+
+    def test_rm_with_r_invalid_input(self, fs, monkeypatch):
+        """Тест rm -r с неверным вводом"""
+        fs.create_dir("/test_dir")
+        monkeypatch.setattr("builtins.input", lambda x: "invalid")
+
+        with pytest.raises(InvalidInputError):
+            rm("/test_dir", ["-r"])
+
     def test_rm_does_not_exist(self):
         """тест удаления несуществующего файла"""
         with (pytest.raises(NotADirectoryError)):
             rm("/nonexistent_dir", ["-r"])
+
 
     def test_create_and_extract_zip(self, fs):
         """Тест создания zip арихваи его извлечения"""
@@ -194,6 +259,17 @@ class TestCommands:
         assert os.path.exists("/test_extract_dir")
         assert os.path.exists("/test_extract_dir/file1.txt")
         assert open("/test_extract_dir/file1.txt").read() == "content1"
+
+    def test_create_zip_file_not_found(self, fs):
+        """Тест создания zip из несуществующей директории"""
+        with pytest.raises(FileNotFoundError):
+            create_zip("/nonexistent", "test.zip")
+
+    def test_create_zip_not_directory(self, fs):
+        """Тест создания zip из файла вместо директории"""
+        fs.create_file("/file.txt")
+        with pytest.raises(NotADirectoryError):
+            create_zip("/file.txt", "test.zip")
 
     def test_create_and_extract_tar(self, fs):
         """Тест создания и извлечения tar архива"""
