@@ -241,7 +241,7 @@ def rm(dir_del, flag):
     if not directory_del.exists():
         raise NotADirectoryError(f"Directory {directory_del} does not exist")
 
-    ogr_paths = {Path("/"), Path.home().resolve(), Path.cwd().parent.resolve()}
+    ogr_paths = {Path("\\"), Path("~"), Path.home().resolve(), Path.cwd().parent.resolve()}
 
     if directory_del.resolve() in ogr_paths:
         raise PermissionError(f"Directory {directory_del} cannot be removed")
